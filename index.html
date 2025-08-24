@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Гороскоп — Telegram WebApp</title>
+  <meta name="description" content="Ежедневный гороскоп в Telegram WebApp: выбери знак и читай прогноз на сегодня, завтра и неделю." />
+  <!-- Telegram WebApp SDK (работает в среде Telegram; в браузере просто игнорируется) -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #161a22;
+      --text: #e6e8ee;
+      --muted: #a2a8b3;
+      --primary: #6aa0ff;
+      --accent: #ffc46a;
+      --ok: #2ecc71;
+      --shadow: 0 10px 24px rgba(0,0,0,.35);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
+      Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: var(--bg); color: var(--text);
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+    .container { max-width: 980px; margin: 0 auto; padding: 20px; }
+    header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+    .logo { width:40px; height:40px; display:grid; place-items:center; background:var(--card); border-radius:12px; box-shadow: var(--shadow); }
+    .title { font-weight: 800; letter-spacing:.2px; }
+    .subtitle { color: var(--muted); font-size: 14px; }
+
+    .grid { display:grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+    @media (max-width: 860px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+    @media (max-width: 520px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+
+    .card { background: var(--card); border-radius: var(--radius); padding: 12px; text-align:center; cursor:pointer; transition: transform .08s ease, background .15s ease; box-shadow: var(--shadow); }
+    .card:hover { transform: translateY(-2px); }
+    .card.active { outline: 2px solid var(--primary); background: #1a2130; }
+    .sym { font-size: 24px; line-height:1; }
+    .sign { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    .panel { margin-top: 16px; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow:hidden; }
+    .panel-head { display:flex; align-items:center; justify-content:space-between; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .panel-title { font-weight: 700; display:flex; align-items:center; gap:10px; }
+    .chip { font-size: 12px; color: var(--muted); background: rgba(255,255,255,.06); padding:4px 8px; border-radius: 999px; }
+
+    .tabs { display:flex; gap: 8px; padding: 12px 12px 0; flex-wrap: wrap; }
+    .tab { border: 1px solid rgba(255,255,255,.08); background: transparent; color: var(--text); padding: 8px 12px; border-radius: 10px; cursor:pointer; font-weight:600; }
+    .tab.active { background: var(--primary); border-color: var(--primary); color:#0b1220; }
+
+    .content { padding: 12px 16px 16px; }
+    .text { color: var(--text); line-height: 1.55; white-space: pre-wrap; }
+    .muted { color: var(--muted); }
+
+    .bar { display:flex; align-items:center; gap: 10px; padding: 8px 12px; background: #121620; border-radius: 12px; margin: 12px 16px; }
+    .bar input[type="search"] { flex:1; background: transparent; border: 0; color: var(--text); font-size: 14px; outline: none; }
+
+    .footer { text-align:center; color: var(--muted); font-size: 12px; margin: 18px 0 40px; }
+    .link { color: var(--primary); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">🔮</div>
+      <div>
+        <div class="title">Гороскоп</div>
+        <div class="subtitle">Выберите знак зодиака и день — всё на одной странице</div>
+      </div>
+    </header>
+
+    <div class="bar">
+      <span class="muted">🔎</span>
+      <input id="search" type="search" placeholder="Поиск по знаку (например: Весы, Libra)" />
+    </div>
+
+    <section id="signs" class="grid" aria-label="Знаки зодиака"></section>
+
+    <section id="panel" class="panel" hidden>
+      <div class="panel-head">
+        <div class="panel-title"><span id="panel-emoji" class="sym"></span><span id="panel-name"></span></div>
+        <span id="panel-date" class="chip"></span>
+      </div>
+      <div class="tabs">
+        <button class="tab" data-range="today">Сегодня</button>
+        <button class="tab" data-range="tomorrow">Завтра</button>
+        <button class="tab" data-range="week">Неделя</button>
+      </div>
+      <div class="content">
+        <div id="text" class="text"></div>
+        <div id="hint" class="muted" style="margin-top:10px"></div>
+      </div>
+    </section>
+
+    <div class="footer">
+      Если открыли вне Telegram: WebApp функции (тема, кнопка подписки) скрыты. <a class="link" href="#" id="reset">Сбросить выбор</a>
+    </div>
+  </div>
+
+  <script>
+    // ====== ДАННЫЕ (заполняйте своими текстами) ======
+    // Поддерживается простой текст и \n для переносов. Вы можете обновлять раз в месяц.
+    const DATA = {
+      aries:     { emoji:"♈", ru:"Овен", en:"Aries",     today:"Энергия на пике. Планируйте смело.", tomorrow:"Фокус на деньгах — полезные идеи.", week:"Неделя ясности: закройте старые вопросы." },
+      taurus:    { emoji:"♉", ru:"Телец", en:"Taurus",   today:"Стабильность важнее скорости.", tomorrow:"Помогите близкому — это вернётся.", week:"Неделя заботы о себе и доме." },
+      gemini:    { emoji:"♊", ru:"Близнецы", en:"Gemini", today:"Общайтесь — из разговора родится шанс.", tomorrow:"Берегите время — не распыляйтесь.", week:"Неделя идей и полезных знакомств." },
+      cancer:    { emoji:"♋", ru:"Рак", en:"Cancer",     today:"Дом и уют дадут силы.", tomorrow:"Сделайте паузу, не спешите.", week:"Неделя восстановления и спокойствия." },
+      leo:       { emoji:"♌", ru:"Лев", en:"Leo",       today:"Вас заметят. Будьте щедры на похвалу.", tomorrow:"Смелый шаг окупится.", week:"Неделя лидерства и творчества." },
+      virgo:     { emoji:"♍", ru:"Дева", en:"Virgo",     today:"Порядок в делах — порядок в мыслях.", tomorrow:"Меньше критики — больше пользы.", week:"Неделя продуктивности и здоровых привычек." },
+      libra:     { emoji:"♎", ru:"Весы", en:"Libra",     today:"Ищите баланс — и он найдётся.", tomorrow:"Согласие через диалог.", week:"Неделя партнёрств и договорённостей." },
+      scorpio:   { emoji:"♏", ru:"Скорпион", en:"Scorpio", today:"Интуиция подскажет верно.", tomorrow:"Ограничьте лишний драматизм.", week:"Неделя трансформации и решений." },
+      sagittarius:{emoji:"♐", ru:"Стрелец", en:"Sagittarius", today:"Планируйте поездку или обучение.", tomorrow:"Не откладывайте звонок.", week:"Неделя расширения горизонтов." },
+      capricorn: { emoji:"♑", ru:"Козерог", en:"Capricorn", today:"Дисциплина = результат.", tomorrow:"Поддержите коллегу — усилите союз.", week:"Неделя карьеры и целей." },
+      aquarius:  { emoji:"♒", ru:"Водолей", en:"Aquarius", today:"Нестандартный подход = прорыв.", tomorrow:"Смените обстановку — появятся идеи.", week:"Неделя экспериментов и свободы." },
+      pisces:    { emoji:"♓", ru:"Рыбы", en:"Pisces",   today:"Послушайте музыку — это вдохновит.", tomorrow:"Оберегайте границы.", week:"Неделя мягкой силы и интуиции." }
+    };
+
+    // ====== РЕНДЕР СЕТКИ ЗНАКОВ ======
+    const $signs = document.getElementById('signs');
+    const $panel = document.getElementById('panel');
+    const $panelEmoji = document.getElementById('panel-emoji');
+    const $panelName = document.getElementById('panel-name');
+    const $panelDate = document.getElementById('panel-date');
+    const $text = document.getElementById('text');
+    const $hint = document.getElementById('hint');
+    const $search = document.getElementById('search');
+
+    const entries = Object.entries(DATA);
+
+    function renderGrid(filter = '') {
+      const q = filter.trim().toLowerCase();
+      $signs.innerHTML = '';
+      entries.forEach(([key, s]) => {
+        const hay = `${s.ru} ${s.en} ${key}`.toLowerCase();
+        if (q && !hay.includes(q)) return;
+        const card = document.createElement('button');
+        card.className = 'card';
+        card.dataset.key = key;
+        card.innerHTML = `<div class="sym">${s.emoji}</div><div class="sign">${s.ru} / ${s.en}</div>`;
+        card.addEventListener('click', () => selectSign(key));
+        $signs.appendChild(card);
+      });
+    }
+
+    $search.addEventListener('input', (e) => renderGrid(e.target.value));
+
+    // ====== ВЫБОР ЗНАКА И ТАБОВ ======
+    let current = { sign: null, range: 'today' };
+
+    function selectSign(key) {
+      current.sign = key;
+      localStorage.setItem('zodiac:selected', key);
+      updatePanel();
+      window.scrollTo({ top: document.querySelector('#panel').offsetTop - 8, behavior: 'smooth' });
+    }
+
+    function selectRange(range) {
+      current.range = range;
+      localStorage.setItem('zodiac:range', range);
+      updatePanel();
+    }
+
+    function updatePanel() {
+      document.querySelectorAll('.card').forEach(c => c.classList.toggle('active', c.dataset.key===current.sign));
+      if (!current.sign) { $panel.hidden = true; return; }
+      const s = DATA[current.sign];
+      $panel.hidden = false;
+      $panelEmoji.textContent = s.emoji;
+      $panelName.textContent = `${s.ru} / ${s.en}`;
+      // дата для "сегодня"/"завтра"/недели
+      const now = new Date();
+      const fmt = d => d.toLocaleDateString(undefined, { day:'2-digit', month:'short' });
+      let label = '';
+      if (current.range === 'today') label = `Сегодня • ${fmt(now)}`;
+      else if (current.range === 'tomorrow') label = `Завтра • ${fmt(new Date(now.getTime()+86400000))}`;
+      else {
+        const end = new Date(now.getTime()+6*86400000);
+        label = `Неделя • ${fmt(now)} — ${fmt(end)}`;
+      }
+      $panelDate.textContent = label;
+
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.range===current.range));
+      $text.textContent = s[current.range] || 'Текст не задан.';
+      $hint.textContent = 'Совет: добавьте в Избранное или подключите ежедневную рассылку в боте.';
+
+      // Telegram MainButton для подписки
+      if (window.Telegram && window.Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
+        const app = Telegram.WebApp;
+        app.MainButton.setText(`Подписаться: ${s.ru} — ${label}`);
+        app.MainButton.show();
+        app.MainButton.onClick(() => {
+          // Отправляем данные боту (подписка на пуши по выбранному знаку/режиму)
+          app.sendData(JSON.stringify({ action:'subscribe', sign: current.sign, range: current.range }));
+          app.HapticFeedback.impactOccurred('medium');
+        });
+      }
+    }
+
+    document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => selectRange(btn.dataset.range)));
+
+    // ====== ИНИЦИАЛИЗАЦИЯ ======
+    function init() {
+      renderGrid();
+      // восстановить выбор
+      const savedSign = localStorage.getItem('zodiac:selected');
+      const savedRange = localStorage.getItem('zodiac:range');
+      if (savedSign && DATA[savedSign]) current.sign = savedSign;
+      if (savedRange) current.range = savedRange;
+      updatePanel();
+
+      // Telegram оформление и поведение
+      if (window.Telegram && window.Telegram.WebApp) {
+        const app = Telegram.WebApp;
+        app.expand();
+        // Подстраиваемся под тему Telegram
+        document.documentElement.style.setProperty('--bg', app.themeParams.bg_color || getComputedStyle(document.documentElement).getPropertyValue('--bg'));
+        document.documentElement.style.setProperty('--card', app.themeParams.secondary_bg_color || getComputedStyle(document.documentElement).getPropertyValue('--card'));
+        document.documentElement.style.setProperty('--text', app.themeParams.text_color || getComputedStyle(document.documentElement).getPropertyValue('--text'));
+        document.documentElement.style.setProperty('--muted', app.themeParams.hint_color || getComputedStyle(document.documentElement).getPropertyValue('--muted'));
+        document.documentElement.style.setProperty('--primary', app.themeParams.button_color || getComputedStyle(document.documentElement).getPropertyValue('--primary'));
+      }
+    }
+
+    init();
+
+    // Сброс
+    document.getElementById('reset').addEventListener('click', (e)=>{
+      e.preventDefault();
+      localStorage.removeItem('zodiac:selected');
+      localStorage.removeItem('zodiac:range');
+      current = { sign:null, range:'today' };
+      updatePanel();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  </script>
+</body>
+</html>
+
+
+
