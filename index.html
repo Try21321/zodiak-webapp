@@ -223,12 +223,11 @@
       // Telegram MainButton
       if (window.Telegram && window.Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
         const app = Telegram.WebApp;
-        app.MainButton.setText(`Подписаться: ${(s.ru || current.sign)} — ${label}`);
-        app.MainButton.show();
-        app.MainButton.onClick(() => {
-          app.sendData(JSON.stringify({ action: 'subscribe', sign: current.sign, range: current.range }));
-          app.HapticFeedback.impactOccurred('medium');
-        });
+       app.MainButton.setText(`Подписаться что бы не потерять нас`);
+app.MainButton.show();
+app.MainButton.onClick(() => {
+  window.open("https://t.me/goroskop_zodiak_mag", "_blank");
+});
       }
     }
 
