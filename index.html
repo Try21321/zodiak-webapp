@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Гороскоп — Telegram WebApp</title>
   <meta name="description" content="Ежедневный гороскоп в Telegram WebApp: выбери знак и читай прогноз на сегодня, завтра и неделю." />
-  <!-- Telegram WebApp SDK (работает в среде Telegram; в браузере просто игнорируется) -->
+  <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
@@ -61,6 +61,7 @@
 
     .footer { text-align:center; color: var(--muted); font-size: 12px; margin: 18px 0 40px; }
     .link { color: var(--primary); text-decoration: none; }
+    .err { color: #ff8a8a; font-size: 13px; padding: 8px 12px; }
   </style>
 </head>
 <body>
@@ -93,6 +94,7 @@
       <div class="content">
         <div id="text" class="text"></div>
         <div id="hint" class="muted" style="margin-top:10px"></div>
+        <div id="error" class="err" hidden></div>
       </div>
     </section>
 
@@ -102,24 +104,9 @@
   </div>
 
   <script>
-    // ====== ДАННЫЕ (заполняйте своими текстами) ======
-    // Поддерживается простой текст и \n для переносов. Вы можете обновлять раз в месяц.
-    const DATA = {
-      aries:     { emoji:"♈", ru:"Овен", en:"Aries",     today:"Энергия на пике. Планируйте смело.", tomorrow:"Фокус на деньгах — полезные идеи.", week:"Неделя ясности: закройте старые вопросы." },
-      taurus:    { emoji:"♉", ru:"Телец", en:"Taurus",   today:"Стабильность важнее скорости.", tomorrow:"Помогите близкому — это вернётся.", week:"Неделя заботы о себе и доме." },
-      gemini:    { emoji:"♊", ru:"Близнецы", en:"Gemini", today:"Общайтесь — из разговора родится шанс.", tomorrow:"Берегите время — не распыляйтесь.", week:"Неделя идей и полезных знакомств." },
-      cancer:    { emoji:"♋", ru:"Рак", en:"Cancer",     today:"Дом и уют дадут силы.", tomorrow:"Сделайте паузу, не спешите.", week:"Неделя восстановления и спокойствия." },
-      leo:       { emoji:"♌", ru:"Лев", en:"Leo",       today:"Вас заметят. Будьте щедры на похвалу.", tomorrow:"Смелый шаг окупится.", week:"Неделя лидерства и творчества." },
-      virgo:     { emoji:"♍", ru:"Дева", en:"Virgo",     today:"Порядок в делах — порядок в мыслях.", tomorrow:"Меньше критики — больше пользы.", week:"Неделя продуктивности и здоровых привычек." },
-      libra:     { emoji:"♎", ru:"Весы", en:"Libra",     today:"Ищите баланс — и он найдётся.", tomorrow:"Согласие через диалог.", week:"Неделя партнёрств и договорённостей." },
-      scorpio:   { emoji:"♏", ru:"Скорпион", en:"Scorpio", today:"Интуиция подскажет верно.", tomorrow:"Ограничьте лишний драматизм.", week:"Неделя трансформации и решений." },
-      sagittarius:{emoji:"♐", ru:"Стрелец", en:"Sagittarius", today:"Планируйте поездку или обучение.", tomorrow:"Не откладывайте звонок.", week:"Неделя расширения горизонтов." },
-      capricorn: { emoji:"♑", ru:"Козерог", en:"Capricorn", today:"Дисциплина = результат.", tomorrow:"Поддержите коллегу — усилите союз.", week:"Неделя карьеры и целей." },
-      aquarius:  { emoji:"♒", ru:"Водолей", en:"Aquarius", today:"Нестандартный подход = прорыв.", tomorrow:"Смените обстановку — появятся идеи.", week:"Неделя экспериментов и свободы." },
-      pisces:    { emoji:"♓", ru:"Рыбы", en:"Pisces",   today:"Послушайте музыку — это вдохновит.", tomorrow:"Оберегайте границы.", week:"Неделя мягкой силы и интуиции." }
-    };
-
-    // ====== РЕНДЕР СЕТКИ ЗНАКОВ ======
+    // ====== ГЛОБАЛЬНЫЕ ======
+    let DATA = {};               // Заполним после fetch('horoscope_ru.json')
+    let ORDER = [];              // Порядок знаков из DATA
     const $signs = document.getElementById('signs');
     const $panel = document.getElementById('panel');
     const $panelEmoji = document.getElementById('panel-emoji');
@@ -128,29 +115,66 @@
     const $text = document.getElementById('text');
     const $hint = document.getElementById('hint');
     const $search = document.getElementById('search');
+    const $error = document.getElementById('error');
 
-    const entries = Object.entries(DATA);
+    let current = { sign: null, range: 'today' };
 
+    // ====== ЗАГРУЗКА ДАННЫХ ======
+    async function loadData() {
+      try {
+        const res = await fetch('horoscope_ru.json', { cache: 'no-cache' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        DATA = await res.json();
+
+        // Приводим формат: ожидаем, что в JSON каждый знак — объект с полями:
+        // { emoji, ru, en, today, tomorrow, week }
+        // Если твоё имя поля "weekly" — отразим в "week".
+        for (const key of Object.keys(DATA)) {
+          const s = DATA[key] || {};
+          if (!s.week && s.weekly) s.week = s.weekly;
+        }
+
+        ORDER = Object.keys(DATA);
+        init();
+      } catch (e) {
+        console.error('Ошибка загрузки horoscope_ru.json:', e);
+        $error.hidden = false;
+        $error.textContent = 'Ошибка загрузки данных. Убедитесь, что файл horoscope_ru.json лежит рядом с index.html и страница открыта через http/https (не file://).';
+      }
+    }
+
+    // ====== РЕНДЕР СЕТКИ ЗНАКОВ ======
     function renderGrid(filter = '') {
       const q = filter.trim().toLowerCase();
       $signs.innerHTML = '';
-      entries.forEach(([key, s]) => {
-        const hay = `${s.ru} ${s.en} ${key}`.toLowerCase();
+      ORDER.forEach((key) => {
+        const s = DATA[key];
+        if (!s) return;
+        const hay = `${s.ru || ''} ${s.en || ''} ${key}`.toLowerCase();
         if (q && !hay.includes(q)) return;
+
         const card = document.createElement('button');
         card.className = 'card';
         card.dataset.key = key;
-        card.innerHTML = `<div class="sym">${s.emoji}</div><div class="sign">${s.ru} / ${s.en}</div>`;
+        card.innerHTML = `<div class="sym">${s.emoji || '✨'}</div><div class="sign">${(s.ru || key)} / ${(s.en || key)}</div>`;
         card.addEventListener('click', () => selectSign(key));
         $signs.appendChild(card);
       });
+
+      // Если после фильтра ничего не осталось
+      if (!$signs.children.length) {
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.style.gridColumn = '1 / -1';
+        empty.style.padding = '8px 4px';
+        empty.textContent = 'Ничего не найдено';
+        $signs.appendChild(empty);
+      }
     }
 
     $search.addEventListener('input', (e) => renderGrid(e.target.value));
 
     // ====== ВЫБОР ЗНАКА И ТАБОВ ======
-    let current = { sign: null, range: 'today' };
-
     function selectSign(key) {
       current.sign = key;
       localStorage.setItem('zodiac:selected', key);
@@ -165,36 +189,44 @@
     }
 
     function updatePanel() {
-      document.querySelectorAll('.card').forEach(c => c.classList.toggle('active', c.dataset.key===current.sign));
-      if (!current.sign) { $panel.hidden = true; return; }
+      // подсветка карточек
+      document.querySelectorAll('.card').forEach(c => c.classList.toggle('active', c.dataset.key === current.sign));
+
+      if (!current.sign || !DATA[current.sign]) { $panel.hidden = true; return; }
       const s = DATA[current.sign];
       $panel.hidden = false;
-      $panelEmoji.textContent = s.emoji;
-      $panelName.textContent = `${s.ru} / ${s.en}`;
-      // дата для "сегодня"/"завтра"/недели
+
+      // заголовок
+      $panelEmoji.textContent = s.emoji || '✨';
+      $panelName.textContent = `${s.ru || current.sign} / ${s.en || current.sign}`;
+
+      // дата
       const now = new Date();
       const fmt = d => d.toLocaleDateString(undefined, { day:'2-digit', month:'short' });
       let label = '';
       if (current.range === 'today') label = `Сегодня • ${fmt(now)}`;
-      else if (current.range === 'tomorrow') label = `Завтра • ${fmt(new Date(now.getTime()+86400000))}`;
+      else if (current.range === 'tomorrow') label = `Завтра • ${fmt(new Date(now.getTime() + 86400000))}`;
       else {
-        const end = new Date(now.getTime()+6*86400000);
+        const end = new Date(now.getTime() + 6 * 86400000);
         label = `Неделя • ${fmt(now)} — ${fmt(end)}`;
       }
       $panelDate.textContent = label;
 
-      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.range===current.range));
-      $text.textContent = s[current.range] || 'Текст не задан.';
+      // табы
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.range === current.range));
+
+      // текст
+      const content = s[current.range] || 'Текст не задан.';
+      $text.textContent = content;
       $hint.textContent = 'Совет: добавьте в Избранное или подключите ежедневную рассылку в боте.';
 
-      // Telegram MainButton для подписки
+      // Telegram MainButton
       if (window.Telegram && window.Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
         const app = Telegram.WebApp;
-        app.MainButton.setText(`Подписаться: ${s.ru} — ${label}`);
+        app.MainButton.setText(`Подписаться: ${(s.ru || current.sign)} — ${label}`);
         app.MainButton.show();
         app.MainButton.onClick(() => {
-          // Отправляем данные боту (подписка на пуши по выбранному знаку/режиму)
-          app.sendData(JSON.stringify({ action:'subscribe', sign: current.sign, range: current.range }));
+          app.sendData(JSON.stringify({ action: 'subscribe', sign: current.sign, range: current.range }));
           app.HapticFeedback.impactOccurred('medium');
         });
       }
@@ -204,7 +236,11 @@
 
     // ====== ИНИЦИАЛИЗАЦИЯ ======
     function init() {
+      // порядок знаков фиксируем, но если хочется — можно отсортировать вручную
+      // ORDER = ['aries','taurus','gemini','cancer','leo','virgo','libra','scorpio','sagittarius','capricorn','aquarius','pisces'];
+
       renderGrid();
+
       // восстановить выбор
       const savedSign = localStorage.getItem('zodiac:selected');
       const savedRange = localStorage.getItem('zodiac:range');
@@ -212,11 +248,10 @@
       if (savedRange) current.range = savedRange;
       updatePanel();
 
-      // Telegram оформление и поведение
+      // Telegram оформление
       if (window.Telegram && window.Telegram.WebApp) {
         const app = Telegram.WebApp;
         app.expand();
-        // Подстраиваемся под тему Telegram
         document.documentElement.style.setProperty('--bg', app.themeParams.bg_color || getComputedStyle(document.documentElement).getPropertyValue('--bg'));
         document.documentElement.style.setProperty('--card', app.themeParams.secondary_bg_color || getComputedStyle(document.documentElement).getPropertyValue('--card'));
         document.documentElement.style.setProperty('--text', app.themeParams.text_color || getComputedStyle(document.documentElement).getPropertyValue('--text'));
@@ -225,20 +260,22 @@
       }
     }
 
-    init();
-
     // Сброс
-    document.getElementById('reset').addEventListener('click', (e)=>{
+    document.getElementById('reset').addEventListener('click', (e) => {
       e.preventDefault();
       localStorage.removeItem('zodiac:selected');
       localStorage.removeItem('zodiac:range');
-      current = { sign:null, range:'today' };
+      current = { sign: null, range: 'today' };
       updatePanel();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
+
+    // Старт
+    loadData();
   </script>
 </body>
 </html>
+
 
 
 
