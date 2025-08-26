@@ -64,6 +64,15 @@
     .err { color: #ff8a8a; font-size: 13px; padding: 8px 12px; }
   </style>
 </head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-ER1SJMS8DP"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-ER1SJMS8DP');
+</script>
 <body>
   <div class="container">
     <header>
@@ -223,7 +232,7 @@
       // Telegram MainButton
       if (window.Telegram && window.Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
   const app = Telegram.WebApp;
-  app.MainButton.setText("Подписаться чтобы не потерять нас");
+  app.MainButton.setText("Подпишись, твой ежедневный гороскоп!");
   app.MainButton.show();
 
   app.MainButton.onClick(() => {
