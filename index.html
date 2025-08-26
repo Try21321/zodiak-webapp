@@ -222,12 +222,13 @@
 
       // Telegram MainButton
       if (window.Telegram && window.Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
-        const app = Telegram.WebApp;
-       app.MainButton.setText(`Подписаться что бы не потерять нас`);
-app.MainButton.show();
-app.MainButton.onClick(() => {
-  window.open("https://t.me/goroskop_zodiak_mag", "_blank");
-});
+  const app = Telegram.WebApp;
+  app.MainButton.setText("Подписаться чтобы не потерять нас");
+  app.MainButton.show();
+
+  app.MainButton.onClick(() => {
+    app.openTelegramLink("https://t.me/goroskop_zodiak_mag");
+  });
       }
     }
 
